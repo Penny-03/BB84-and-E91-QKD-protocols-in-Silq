@@ -1,0 +1,351 @@
+// E91 QKD Protocol using entangled pairs
+
+//Working but needs a very high number of pairs to make the S value work
+//Problem there's aways a pair that even if is the same basis it do not match
+
+// Constants definition
+total_pairs := 100 :!N; // Number of EPR pairs to generate
+
+// Generates random basis choices for Alice and Bob
+def random_bases(total_pairs:!N): ((!N^total_pairs)^2) {
+    alice_choices := vector(total_pairs, 0:!N);
+    bob_choices := vector(total_pairs, 0:!N);
+    
+    for i in [0..total_pairs) {
+        alice_choices[i] = randInt3(); 
+        bob_choices[i] = randInt3();   
+    }
+    return (alice_choices, bob_choices);
+}
+
+// function to generate random integer 0,1,2
+def randInt3(): !N {
+    q1 := 0:!B;
+    q2 := 0:!B;
+    result := 3:!N; 
+    while result == 3 {
+        b1 := measure(H(0:B));  
+        b2 := measure(H(0:B));  
+        result = if b1 then (if b2 then 3 else 2) else (if b2 then 1 else 0);
+    }
+    return result;
+}
+// Returns 0 with probability p, and 1 with probability (1 - p)
+def simulate_probability(p: !R): !B {
+    θ := 2.0 * acos(sqrt(p));     // Rotation angle for amplitude √p
+    q := rotY(θ, 0:B);            // Rotate initial |0⟩ state
+    return measure(q);            // Measure and return result
+}
+
+// Eve measures the qubit in a random basis, disturbing entanglement
+def eavesdrop(qubit_alice: B, qubit_bob :B): !B^2  {
+    if measure(H(0:B)) { // 50% chance to measure on WW bases
+        
+        result_alice := measure_in_basis(qubit_alice, π/4);
+        result_bob := measure_in_basis(qubit_bob, π/4);
+    }
+    else { // 50% chance to measure on ZZ bases
+        result_alice := measure_in_basis(qubit_alice, π/2);
+        result_bob := measure_in_basis(qubit_bob, π/2);
+    }
+
+    return (result_alice, result_bob);
+}
+
+
+// Creates an EPR pair (Bell state |Ψ−⟩ = (|01⟩ - |10⟩)/√2)
+def  create_EPR_pair(q1:B,q2:B)mfree: B^2 {
+    
+    q1 := H(q1);
+    if q1 {q2:=X(q2)}//CNOT gate
+    return (q1, q2);
+}
+
+// Measures a qubit in a given basis (angle)
+def measure_in_basis(qubit: B, angle: !R): !B {
+    // Apply rotation gate based on angle
+    if angle == 0 {
+        qubit := H(qubit)
+    } else if angle == π/4 { //S H T H
+        qubit := H(rotZ(π/4,H(rotZ(π/2, qubit))));
+    } else if  angle == (3*π)/4 {// S H T+ H
+        qubit := H(rotZ((7*π)/4,H(rotZ(π/2, qubit))));
+    }
+    // else angle is 90, measure in standard basis
+    
+    return measure(qubit);
+}
+
+def check_pair(a_result: !B, b_result: !B): !N {
+    // Check the results of Alice and Bob
+    if a_result ==0 && b_result==0 {
+        return 0; // P--;
+    } else if a_result==0 && b_result ==1{
+        return 1; // P-+
+    }else if a_result==1 && b_result ==0{
+        return 2; // P+-
+    } 
+    return 3; //P++
+    
+}
+def check_eavesdropping(alice_results: !B[], bob_results: !B[], 
+                       alice_choices: !N[], bob_choices: !N[],
+                       Group_1_indeces: !N[], total_G1:!N): !R {
+
+
+    // E91 uses these specific basis combinations for testing:
+    // Alice's bases: 1=0°, 2=45°, 3=90°
+    // Bob's bases: 1=45°, 2=90°, 3=135°
+
+    //S=E(a1,b1) —E(a1, b3)+E(a3,b1)+E(a3, b3)= 2√2
+
+    // E(ai,bj ) =P++(ai ,bj )+ P--(ai , bj ) - P+-(ai ,bj ) - P-+(ai , bj )
+    
+    // where P++(ai,bj) is the probability that Alice and Bob get the same result(+1,+1) when they measure in bases ai and bj respectively.
+    // P+-(ai,bj) is the probability that Alice and Bob get different results(+1,-1) when they measure in bases ai and bj respectively.
+    
+    // Initialize correlation terms
+    E00 := 0.0:!R;  // Alice 0° vs Bob 45°
+    E02 := 0.0:!R;  // Alice 0° vs Bob 135°
+    E20 := 0.0:!R;  // Alice 90° vs Bob 45°
+    E22 := 0.0:!R;  // Alice 90° vs Bob 135°
+
+    // each element represents the number of (0,0), (0,1), (1,0) and (1,1) results respectively
+    count00 := (0,0,0,0):!N^4;   //XW observable
+    count02 := (0,0,0,0):!N^4;   //XV observable
+    count20 := (0,0,0,0):!N^4;   //ZW observable
+    count22 := (0,0,0,0):!N^4;   //ZV observable
+
+    tot00 := 0:!N; 
+    tot02 := 0:!N;             
+    tot20 := 0:!N; 
+    tot22 := 0:!N; 
+    
+
+    // Calculate correlation terms for each combination
+    for i in [0..total_G1) {
+        idx := Group_1_indeces[i];
+        a_choice := alice_choices[idx];
+        b_choice := bob_choices[idx];
+        
+        k:=0; 
+        k=check_pair(alice_results[idx], bob_results[idx]);
+        // Alice 0° (0) vs Bob 45° (0)
+        if (a_choice == 0 && b_choice == 0) {
+            count00[k] += 1;
+            tot00+= 1;
+        }
+        // Alice 0° (0) vs Bob 135° (2)
+        else if (a_choice == 0 && b_choice == 2) {
+            count02[k] += 1;
+            tot02 += 1;
+        }
+        // Alice 90° (2) vs Bob 45° (0)
+        else if (a_choice == 2 && b_choice == 0) {
+            count20[k] += 1;
+            tot20+= 1;
+        }
+        // Alice 90° (2) vs Bob 135° (2)
+        else if (a_choice == 2 && b_choice == 2) {
+            count22[k] += 1;
+            tot22 += 1;
+        }
+    }
+    
+    
+    // Normalize correlation terms
+    if tot00 > 0 { E00 = (count00[0]-count00[1]-count00[2]+count00[3]) / tot00; }
+    if tot02 > 0 { E02 = (count02[0]-count02[1]-count02[2]+count02[3]) / tot02; }
+    if tot20 > 0 { E20 = (count20[0]-count20[1]-count20[2]+count20[3]) / tot20; }
+    if tot22 > 0 { E22 = (count22[0]-count22[1]-count22[2]+count22[3]) / tot22; }
+    
+ 
+    
+    // Calculate CHSH S value
+    S := E00 -( E02) + E20 + E22;
+    S_abs := abs(S); // Absolute value of S
+    
+    
+    // Quantum prediction: S = 2√2 ≈ 2.828
+    // Classical limit: S ≤ 2
+    // Threshold adjusted for noise
+    print(S_abs);
+    return S_abs;
+}
+// Main E91 protocol function
+def E91_protocol(p:!R):   !B[]^2  {
+
+    // Measurement bases for Alice and Bob
+
+   // Alice's bases: 0=0°(X observable), 1=45°(W observable), 2=90° (Z observable)
+    // Bob's bases: 0=45° (W observable), 1=90° (Z observable), 2=135° (V  observable)
+
+    alice_bases := ( 0.0, π/4, π/2):!R^3;
+    bob_bases := (π/4, π/2, 3*π/4):!R^3;
+
+    alice_results := vector(total_pairs, 0:!B);
+    bob_results := vector(total_pairs, 0:!B);
+
+    eve_alice_results := vector(total_pairs, 0:!N); 
+    eve_bob_results := vector(total_pairs, 0:!N);
+
+    // Step 1: Source creates EPR pairs and sends to Alice and Bob
+    // Step 2: Alice and Bob randomly choose measurement bases
+    // Step 3: They measure their qubits
+
+    with_eve := true:!B; // Set to true to simulate Eve
+
+
+    (alice_basis_choices, bob_basis_choices) := random_bases(total_pairs);
+    
+    for i in [0..total_pairs) {
+
+        
+
+        (alice_qubits, bob_qubits) := create_EPR_pair(1:B, 1:B); // Create EPR pair
+
+        if with_eve && ( simulate_probability(p) == 0) { // If Eve is present, she measures the qubits with 50% probability
+            (result_alice, result_bob) := eavesdrop(alice_qubits, bob_qubits);
+            eve_alice_results[i] = result_alice;
+            eve_bob_results[i] =   result_bob;
+
+
+            alice_qubits:= if result_alice then 1:B else 0:B;
+            bob_qubits:= if result_bob then 1:B else 0:B;
+
+
+        } else {
+            eve_alice_results[i] = 2:!N; // valore fittizio
+            eve_bob_results[i] = 2:!N;
+        }
+
+
+        alice_results[i] = measure_in_basis(alice_qubits, alice_bases[alice_basis_choices[i]]);
+        bob_results[i] = measure_in_basis(bob_qubits, bob_bases[bob_basis_choices[i]]);  
+    }
+    
+    //add some noise randomly or an attacker that measure
+
+
+    // Step 4: They exchange their basis choices and divide into groups, whether they used the same or different bases
+
+    total_G1:= 0:!N; // Count of G1 indices
+    total_G2:= 0:!N; // Count of G2 indices
+
+    for i in [0..total_pairs) {
+        if ((alice_basis_choices[i] == 1) && (bob_basis_choices[i]==0)) || ((alice_basis_choices[i] == 2) && (bob_basis_choices[i]==1)) {
+            total_G2 += 1;
+        } else {
+            total_G1 += 1; // Count the pairs with different bases
+        }
+    }
+
+    if total_G2 ==0 {
+        //print("!PROTOCOL ABORTED! --- No pairs with same bases");
+        //print(101);
+        return (vector(0, 1:!B),vector(0, 1:!B)); 
+    }
+
+    Group_1_indeces := vector(total_G1, 0:!N); // Different bases (for testing), just store the index of the pair
+    alice_key := vector(total_G2, 0:!B); // Same bases (for key)
+    bob_key := vector(total_G2, 0:!B); // Same bases (for key)
+    
+    Group_2_eveA := vector(total_G2, 0:!N);
+    Group_2_eveB := vector(total_G2, 0:!N);
+
+    G1_idx:=0:!N; // Index for Group 1
+    G2_idx:=0:!N; // Index for Group 2
+
+    for i in [0..total_pairs) {
+        if ((alice_basis_choices[i] == 1) && (bob_basis_choices[i]==0) )|| ((alice_basis_choices[i] == 2) && (bob_basis_choices[i]==1)) {
+            alice_key[G2_idx] = alice_results[i];
+
+            bob_key[G2_idx] = if bob_results[i] == 0 then 1:!B else 0:!B;
+
+            Group_2_eveA[G2_idx] = eve_alice_results[i];
+            Group_2_eveB[G2_idx] = eve_bob_results[i];
+
+            G2_idx += 1;
+            
+            
+            
+        } else  {
+            Group_1_indeces[G1_idx] = i; 
+            
+            G1_idx += 1;//index of out bound
+            
+        }
+    }
+    print(G2_idx);
+    
+    // Step 5: Check for eavesdropping using G1 group
+    // Calculate correlation coefficients for different basis combinations
+    S_abs :=check_eavesdropping(alice_results, bob_results, 
+                         alice_basis_choices, bob_basis_choices,
+                         Group_1_indeces, total_G1 );
+    //if S_abs < 2.5 {//the vaulue is too low, so it means that there is an eavesdropper
+        
+        //print("!PROTOCOL ABORTED! --- Possible eavesdropping detected");
+        //print(111);
+        
+        //return (vector(0, 0:!B)); // Return empty key
+   // }
+    print(Group_2_eveA);
+    print(Group_2_eveB);
+    (eaK, ebK) := eve_knowledge(alice_key, bob_key, Group_2_eveA, Group_2_eveB, total_G2);
+    print(eaK*100);
+    print(100-ebK*100);
+
+
+    // Step 6: If channel is safe, use G2 group as key
+    
+    return (alice_key, bob_key);
+}
+
+
+// Step 6: Calcola la conoscenza di Eve
+
+// Step 6: Calcola la conoscenza di Eve - FIXED
+def eve_knowledge(alice_key:!B[], bob_key:!B[], 
+                    eveA:!N[], eveB:!N[], key_length:!N): !R^2 { 
+    eve_attempts := 0:!N;
+    ea_correct := 0:!N;
+    eb_correct := 0:!N;
+    
+    for i in [0..key_length) {
+        // Only count cases where Eve actually measured (not 2)
+        if eveA[i] != 2 {
+            eve_attempts += 1;
+            
+            // For Alice: Eve's measurement vs Alice's actual result
+            if eveA[i] == alice_key[i] {
+                ea_correct += 1;
+            }
+            
+            // For Bob: Eve's measurement should match Bob's actual result
+            // But remember: Bob's key should be the complement of Alice's key
+            // due to anti-correlation in singlet state
+            if eveB[i] == bob_key[i] {
+                eb_correct += 1;
+            }
+        }
+    }
+    
+    // Calculate knowledge as percentage of correct guesses out of attempts
+    ea_knowledge := if eve_attempts > 0 then ea_correct / eve_attempts else 0.0;
+    eb_knowledge := if eve_attempts > 0 then eb_correct / eve_attempts else 0.0;
+    
+    return (ea_knowledge, eb_knowledge);
+}
+
+
+
+def main() {
+   print(E91_protocol(1.0): !B[]^2);
+    }
+
+
+//introduzione con panoramica di silq
+//Introduzione bb84 e e91
+//Pensare a come verificare bb84 e e91
+//max 15 pagine 
