@@ -1,4 +1,7 @@
 // BB84 QKD Protocol 
+//This is the slow but clear version, designed to illustrate how the protocol works.
+//The other version (BB84_speed-up) is written to be more efficient but less readable.
+
 
 // Constants definition
 n := 4:!N; 
@@ -205,5 +208,6 @@ def main(){
   key:= BB84_protocol(): !B[];
   print(key)
 }
+
 
 
