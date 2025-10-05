@@ -32,5 +32,4 @@ def main():
 * Python 3.x (for running auxiliary scripts and simulations)
 
 
-Se vuoi, posso anche scrivere una **versione più breve e accattivante** adatta per GitHub, che catturi subito l’attenzione senza troppi dettagli tecnici. Vuoi che lo faccia?
 
