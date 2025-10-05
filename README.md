@@ -13,6 +13,11 @@ Three versions of the code are provided for the BB84 protocol:
 * **Efficient version**: Optimized for performance, but less intuitive for learning purposes.
 * **Efficient version with Eve**: You can choose whether to include Eve by changing the `eve_present` flag, and set the percentage of intercepted qubits using `p_eve` in the main function.
 
+There is one version for the E91 protocol where you can choose to include Eve using the `with_eve` flag and set the attack probability in `def main()`.  
+Example:
+```python
+def main():
+    print(E91_protocol(0.0))  # Run the protocol with 0% attack probability
 
 ## Features
 
