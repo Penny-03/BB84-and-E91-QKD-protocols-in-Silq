@@ -18,7 +18,7 @@ Example:
 ```python
 def main():
     print(E91_protocol(0.0))  # Run the protocol with 0% attack probability
-
+```
 ## Features
 
 * Simulate qubit transmission and measurement.
